@@ -372,7 +372,14 @@ class DefomEncoder(nn.Module):
         
         self.out_dim = model_configs[self.dinov2_encoder]['features']
 
-    def forward(self, x, danv2_io_sizes):
+    def _dav2_init_disp(self, idepth, ow):
+        bs = idepth.shape[0]
+        max_idepth, _ = torch.max(idepth.view(bs, -1), dim=1)
+        max_idepth = max_idepth.detach().view(bs, 1, 1, 1) + 1e-8
+        return idepth / max_idepth * self.idepth_scale * ow + 0.01
+
+    def forward(self, x, danv2_io_sizes, external_disp=None, external_valid=None,
+                lidar_fill_dav2=True):
 
         x = torch.cat(x, dim=0)
         ih, iw, oh, ow = danv2_io_sizes
@@ -380,9 +387,16 @@ class DefomEncoder(nn.Module):
 
         features, left_feat, right_feat, idepth = self.depth_anything(x, oh, ow)
 
-        bs = idepth.shape[0]
-        max_idepth, _ = torch.max(idepth.view(bs, -1), dim=1)
-        max_idepth = max_idepth.detach().view(bs, 1, 1, 1) + 1e-8
-        idepth = idepth / max_idepth * self.idepth_scale * ow + 0.01
+        dav2_disp = self._dav2_init_disp(idepth, ow)
 
-        return features, left_feat, right_feat, idepth
+        if external_disp is None:
+            return features, left_feat, right_feat, dav2_disp
+
+        from core.utils.lidar_disp import prepare_init_disp
+        if external_valid is None:
+            external_valid = (external_disp > 1e-6).float()
+        disp_init = prepare_init_disp(
+            external_disp, external_valid, danv2_io_sizes,
+            dav2_disp=dav2_disp, fill_invalid_with_dav2=lidar_fill_dav2,
+        )
+        return features, left_feat, right_feat, disp_init

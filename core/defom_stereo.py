@@ -70,7 +70,8 @@ class DEFOMStereo(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, D, factor * H, factor * W)
 
-    def forward(self, image1, image2, iters=12, scale_iters=3, test_mode=False):
+    def forward(self, image1, image2, iters=12, scale_iters=3, test_mode=False,
+                external_disp=None, external_valid=None, lidar_fill_dav2=True):
         """ Estimate optical flow between pair of frames """
 
         image1 = ((image1 - self.mean)/self.std).contiguous()
@@ -81,7 +82,12 @@ class DEFOMStereo(nn.Module):
 
         # run the context network
         with autocast(enabled=self.args.mixed_precision):
-            d_features, dfeat1, dfeat2, disp = self.defomencoder([image1, image2], danv2_io_sizes)
+            d_features, dfeat1, dfeat2, disp = self.defomencoder(
+                [image1, image2], danv2_io_sizes,
+                external_disp=external_disp,
+                external_valid=external_valid,
+                lidar_fill_dav2=lidar_fill_dav2,
+            )
 
             cnet_list = self.cnet(image1, d_features)
             fmap1, fmap2 = self.fnet([image1, image2], [dfeat1, dfeat2])
