@@ -440,6 +440,13 @@ if __name__ == "__main__":
         choices=["group", "batch", "instance", "none"],
     )
     parser.add_argument("--n_gru_layers", type=int, default=3)
+    parser.add_argument(
+        "--extractor_module",
+        type=str,
+        default="extractor",
+        choices=["extractor", "extractor_defom"],
+        help="which extractor implementation to build into DEFOM-Stereo",
+    )
 
     args = parser.parse_args()
 

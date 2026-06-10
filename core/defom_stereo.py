@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from importlib import import_module
 from core.update import BasicMultiUpdateBlock, ScaleBasicMultiUpdateBlock
-from core.extractor import BasicEncoder, MultiBasicEncoder, ResidualBlock, DefomEncoder
 from core.corr import CorrBlock1D, PytorchAlternateCorrBlock1D, CorrBlockFast1D, AlternateCorrBlock
 from core.utils.utils import coords_grid, upflow, get_danv2_io_size
 
@@ -24,6 +24,11 @@ class DEFOMStereo(nn.Module):
     def __init__(self, args):
         super(DEFOMStereo, self).__init__()
         self.args = args
+        extractor_module = getattr(args, "extractor_module", "extractor")
+        extractor_impl = import_module(f"core.{extractor_module}")
+        BasicEncoder = extractor_impl.BasicEncoder
+        MultiBasicEncoder = extractor_impl.MultiBasicEncoder
+        DefomEncoder = extractor_impl.DefomEncoder
 
         self.register_buffer('mean', torch.tensor([[0.485, 0.456, 0.406]])[..., None, None] * 255)
         self.register_buffer('std', torch.tensor([[0.229, 0.224, 0.225]])[..., None, None] * 255)

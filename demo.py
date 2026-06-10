@@ -83,6 +83,9 @@ if __name__ == '__main__':
     parser.add_argument('--n_downsample', type=int, default=2, choices=[2, 3], help="resolution of the disparity field (1/2^K)")
     parser.add_argument('--context_norm', type=str, default="batch", choices=['group', 'batch', 'instance', 'none'], help="normalization of context encoder")
     parser.add_argument('--n_gru_layers', type=int, default=3, help="number of hidden GRU levels")
+    parser.add_argument('--extractor_module', type=str, default='extractor',
+                        choices=['extractor', 'extractor_defom'],
+                        help='which extractor implementation to build into DEFOM-Stereo')
     
     args = parser.parse_args()
 

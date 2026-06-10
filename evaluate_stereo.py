@@ -9,9 +9,11 @@ import torch
 import torch.nn.functional as F
 torch.cuda.empty_cache()
 from PIL import Image
+from pathlib import Path
 
 from tqdm import tqdm
 from core.defom_stereo import DEFOMStereo, autocast
+from matplotlib import pyplot as plt
 
 import core.stereo_datasets as datasets
 from core.utils.utils import InputPadder
@@ -19,6 +21,22 @@ from core.utils.utils import InputPadder
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters()), sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def _save_disp_visualizations(save_root, dataset_name, sample_name, disp_pr, disp_gt=None, epe=None):
+    save_dir = Path(save_root) / dataset_name
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = Path(sample_name).parent.name if sample_name else "sample"
+    np.save(save_dir / f"{stem}_pred.npy", disp_pr.numpy())
+    plt.imsave(save_dir / f"{stem}_pred.png", disp_pr.numpy(), cmap="jet")
+
+    if disp_gt is not None:
+        np.save(save_dir / f"{stem}_gt.npy", disp_gt.numpy())
+        plt.imsave(save_dir / f"{stem}_gt.png", disp_gt.numpy(), cmap="jet")
+
+    if epe is not None:
+        plt.imsave(save_dir / f"{stem}_epe.png", epe.numpy(), cmap="inferno")
 
 
 @torch.no_grad()
@@ -76,7 +94,7 @@ def validate_things(model, iters=32, scale_iters=8, mixed_prec=False, max_disp=1
 
 
 @torch.no_grad()
-def validate_eth3d(model, iters=32, scale_iters=8, mixed_prec=False):
+def validate_eth3d(model, iters=32, scale_iters=8, mixed_prec=False, save_vis_dir=None, save_vis_limit=20):
     """ Peform validation using the ETH3D (train) split """
     model.eval()
     aug_params = {}
@@ -105,6 +123,17 @@ def validate_eth3d(model, iters=32, scale_iters=8, mixed_prec=False):
         image_out = out[val].float().mean().item()
         image_epe = epe_flattened[val].mean().item()
         logging.info(f"ETH3D {val_id+1} out of {len(val_dataset)}. EPE {round(image_epe,4)} D1 {round(image_out,4)}")
+
+        if save_vis_dir is not None and val_id < save_vis_limit:
+            _save_disp_visualizations(
+                save_vis_dir,
+                "eth3d",
+                data_blob["imageL_file"],
+                disp_pr.squeeze(0),
+                disp_gt.squeeze(0),
+                epe,
+            )
+
         epe_list.append(image_epe)
         out_list.append(image_out)
 
@@ -399,6 +428,13 @@ if __name__ == '__main__':
     parser.add_argument('--n_downsample', type=int, default=2, choices=[2, 3], help="resolution of the disparity field (1/2^K)")
     parser.add_argument('--context_norm', type=str, default="batch", choices=['group', 'batch', 'instance', 'none'], help="normalization of context encoder")
     parser.add_argument('--n_gru_layers', type=int, default=3, help="number of hidden GRU levels")
+    parser.add_argument('--extractor_module', type=str, default='extractor',
+                        choices=['extractor', 'extractor_defom'],
+                        help='which extractor implementation to build into DEFOM-Stereo')
+    parser.add_argument('--save_vis_dir', type=str, default=None,
+                        help='optional directory to save disparity visualizations')
+    parser.add_argument('--save_vis_limit', type=int, default=20,
+                        help='maximum number of samples to visualize per dataset')
 
     args = parser.parse_args()
 
@@ -431,7 +467,14 @@ if __name__ == '__main__':
         validate_things(model, iters=args.valid_iters, scale_iters=args.scale_iters, mixed_prec=use_mixed_precision)
 
     if 'eth3d' in args.datasets:
-        validate_eth3d(model, iters=args.valid_iters, scale_iters=args.scale_iters, mixed_prec=use_mixed_precision)
+        validate_eth3d(
+            model,
+            iters=args.valid_iters,
+            scale_iters=args.scale_iters,
+            mixed_prec=use_mixed_precision,
+            save_vis_dir=args.save_vis_dir,
+            save_vis_limit=args.save_vis_limit,
+        )
 
     if 'kitti12' in args.datasets:
         validate_kitti(model, iters=args.valid_iters, scale_iters=args.scale_iters, split='12', mixed_prec=use_mixed_precision)

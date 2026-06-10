@@ -346,6 +346,9 @@ if __name__ == '__main__':
     parser.add_argument('--context_norm', type=str, default="batch", choices=['group', 'batch', 'instance', 'none'], help="normalization of context encoder")
     parser.add_argument('--n_gru_layers', type=int, default=3, help="number of hidden GRU levels")
     parser.add_argument('--hidden_dims', nargs='+', type=int, default=[128]*3, help="hidden state and context dimensions")
+    parser.add_argument('--extractor_module', type=str, default='extractor',
+                        choices=['extractor', 'extractor_defom'],
+                        help='which extractor implementation to build into DEFOM-Stereo')
 
     # Data augmentation
     parser.add_argument('--img_gamma', type=float, nargs='+', default=None, help="gamma range")
