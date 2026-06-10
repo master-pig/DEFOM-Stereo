@@ -1,6 +1,6 @@
 *.pyc
 checkpoints/
-docs/
 dataset/
 datasets/
 zips/
+runs/

@@ -18,7 +18,13 @@ from utils.dist_utils import get_dist_info, init_dist, setup_for_distributed
 from utils.utils import *
 from core.defom_stereo import DEFOMStereo
 
-from evaluate_stereo import validate_things, count_parameters
+from evaluate_stereo import (
+    validate_eth3d,
+    validate_kitti,
+    validate_middlebury,
+    validate_things,
+    count_parameters,
+)
 import core.stereo_datasets as datasets
 
 try:
@@ -180,7 +186,7 @@ def train(args):
                     logging.info(f"Saving file {save_path.absolute()}")
                     torch.save(model_without_ddp.state_dict(), save_path)
 
-                if total_steps % args.val_freq == 0:
+                if args.val_freq > 0 and total_steps % args.val_freq == 0:
 
                     # visualizing training results with tensorboard
                     disp = disp_predictions[-1]
@@ -193,8 +199,9 @@ def train(args):
                         logger.writer.add_image("gt_disp/{}".format(j),
                                                 (disp_gt[j]).data.type(torch.uint8), total_steps)
 
-                    results  = validate_things(model_without_ddp, args.valid_iters, args.scale_iters)
-                    logger.write_dict(results)
+                    results = run_validation(model_without_ddp, args)
+                    if results:
+                        logger.write_dict(results)
                     model.train()
                     if not args.distributed: model_without_ddp.freeze_bn()
 
@@ -215,6 +222,67 @@ def train(args):
     torch.save(model_without_ddp.state_dict(), PATH)
 
     return PATH
+
+
+def run_validation(model, args):
+    use_mixed_precision = args.corr_implementation.endswith("_cuda")
+    results = {}
+
+    for dataset_name in args.val_datasets:
+        if dataset_name == "none":
+            continue
+        if dataset_name == "things":
+            results.update(
+                validate_things(
+                    model,
+                    iters=args.valid_iters,
+                    scale_iters=args.scale_iters,
+                    mixed_prec=use_mixed_precision,
+                )
+            )
+        elif dataset_name == "eth3d":
+            results.update(
+                validate_eth3d(
+                    model,
+                    iters=args.valid_iters,
+                    scale_iters=args.scale_iters,
+                    mixed_prec=use_mixed_precision,
+                )
+            )
+        elif dataset_name == "kitti12":
+            results.update(
+                validate_kitti(
+                    model,
+                    iters=args.valid_iters,
+                    scale_iters=args.scale_iters,
+                    split="12",
+                    mixed_prec=use_mixed_precision,
+                )
+            )
+        elif dataset_name == "kitti15":
+            results.update(
+                validate_kitti(
+                    model,
+                    iters=args.valid_iters,
+                    scale_iters=args.scale_iters,
+                    split="15",
+                    mixed_prec=use_mixed_precision,
+                )
+            )
+        elif dataset_name.startswith("middlebury_"):
+            results.update(
+                validate_middlebury(
+                    model,
+                    iters=args.valid_iters,
+                    scale_iters=args.scale_iters,
+                    split=dataset_name.replace("middlebury_", ""),
+                    mixed_prec=use_mixed_precision,
+                )
+            )
+        else:
+            raise ValueError(f"Unsupported validation dataset: {dataset_name}")
+
+    return results
 
 
 if __name__ == '__main__':
@@ -255,6 +323,13 @@ if __name__ == '__main__':
 
     # Validation parameters
     parser.add_argument('--valid_iters', type=int, default=32, help='number of disparity field updates during validation forward pass')
+    parser.add_argument(
+        '--val_datasets',
+        nargs='+',
+        default=['things'],
+        choices=['none', 'things', 'eth3d', 'kitti12', 'kitti15'] + [f'middlebury_{s}' for s in 'FHQ'],
+        help='validation datasets run every val_freq steps',
+    )
 
     # Raft Architecure choices
     parser.add_argument('--dinov2_encoder', type=str, default='vits', choices=['vits', 'vitb', 'vitl', 'vitg'])
